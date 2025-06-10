@@ -1,3 +1,4 @@
+-- creative_history
 -- SCD Type 2 Transformation for LinkedIn Creative
 {% assign target_dataset = vars.target_dataset_id %}
 {% assign target_table_id = 'creative_history' %}
@@ -151,6 +152,6 @@ BEGIN TRANSACTION;
 COMMIT TRANSACTION;
 
 -- Drop the source table after successful insertion
-DROP TABLE IF EXISTS `{{source_dataset}}.{{source_table_id}}`;
+-- DROP TABLE IF EXISTS `{{source_dataset}}.{{source_table_id}}`;
 
 END IF; 

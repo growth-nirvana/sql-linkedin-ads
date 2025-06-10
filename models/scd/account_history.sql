@@ -1,3 +1,4 @@
+-- account_history
 -- SCD Type 2 Transformation for LinkedIn Account
 {% assign target_dataset = vars.target_dataset_id %}
 {% assign target_table_id = 'account_history' %}

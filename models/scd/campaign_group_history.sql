@@ -1,3 +1,4 @@
+-- campaign_group_history
 -- SCD Type 2 Transformation for LinkedIn Campaign Group
 {% assign target_dataset = vars.target_dataset_id %}
 {% assign target_table_id = 'campaign_group_history' %}
@@ -40,6 +41,14 @@ CREATE TABLE IF NOT EXISTS `{{target_dataset}}.{{target_table_id}}` (
   allowed_campaign_types STRING,
   _gn_id STRING
 );
+
+/* 
+    There are some columns that sometimes don't exist in the source table.
+    Add them if they don't exist
+*/
+ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
+    ADD COLUMN IF NOT EXISTS total_budget STRING,
+    ADD COLUMN IF NOT EXISTS allowed_campaign_types STRING;
 
 -- Step 1: Create temp table for latest batch with deduplication
 CREATE TEMP TABLE latest_batch AS
@@ -151,6 +160,6 @@ BEGIN TRANSACTION;
 COMMIT TRANSACTION;
 
 -- Drop the source table after successful insertion
-DROP TABLE IF EXISTS `{{source_dataset}}.{{source_table_id}}`;
+-- DROP TABLE IF EXISTS `{{source_dataset}}.{{source_table_id}}`;
 
 END IF; 
