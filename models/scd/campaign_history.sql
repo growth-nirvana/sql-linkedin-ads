@@ -15,6 +15,11 @@ SET table_exists = (
   WHERE table_name = '{{source_table_id}}'
 );
 
+-- add missing columns to source
+
+ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
+ADD COLUMN IF NOT EXISTS total_budget STRING;
+
 -- Only proceed if the source table exists
 IF table_exists THEN
 
@@ -105,7 +110,7 @@ SELECT
   created_time,
   last_modified_time,
   tenant,
-  '' as total_budget,
+  total_budget,
   TO_HEX(SHA256(CONCAT(
     COALESCE(CAST(id AS STRING), ''),
     COALESCE(targeting_criteria, ''),
@@ -138,8 +143,7 @@ SELECT
     COALESCE(CAST(created_time AS STRING), ''),
     COALESCE(CAST(last_modified_time AS STRING), ''),
     COALESCE(tenant, ''),
-    -- COALESCE(total_budget, '')
-    ''
+    COALESCE(total_budget, '')
   ))) AS _gn_id
 FROM base
 WHERE rn = 1;
