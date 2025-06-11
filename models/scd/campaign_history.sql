@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS `{{target_dataset}}.{{target_table_id}}` (
   version STRING,
   associated_entity STRING,
   associated_entity_organization_id INT64,
-  run_schedule STRING,
+  run_schedule_start STRING,
   optimization_target_type STRING,
   change_audit_stamps STRING,
   campaign_group STRING,
@@ -82,7 +82,7 @@ SELECT
   version,
   associated_entity,
   associated_entity_organization_id,
-  run_schedule,
+  JSON_EXTRACT_SCALAR(run_schedule, '$.start') as run_schedule_start,
   optimization_target_type,
   change_audit_stamps,
   campaign_group,
@@ -105,7 +105,7 @@ SELECT
   created_time,
   last_modified_time,
   tenant,
-  total_budget,
+  '' as total_budget,
   TO_HEX(SHA256(CONCAT(
     COALESCE(CAST(id AS STRING), ''),
     COALESCE(targeting_criteria, ''),
@@ -138,7 +138,8 @@ SELECT
     COALESCE(CAST(created_time AS STRING), ''),
     COALESCE(CAST(last_modified_time AS STRING), ''),
     COALESCE(tenant, ''),
-    COALESCE(total_budget, '')
+    -- COALESCE(total_budget, '')
+    ''
   ))) AS _gn_id
 FROM base
 WHERE rn = 1;
@@ -168,7 +169,7 @@ BEGIN TRANSACTION;
       version,
       associated_entity,
       associated_entity_organization_id,
-      run_schedule,
+      run_schedule_start,
       optimization_target_type,
       change_audit_stamps,
       campaign_group,
@@ -207,7 +208,7 @@ BEGIN TRANSACTION;
       S.version,
       S.associated_entity,
       S.associated_entity_organization_id,
-      S.run_schedule,
+      S.run_schedule_start,
       S.optimization_target_type,
       S.change_audit_stamps,
       S.campaign_group,
