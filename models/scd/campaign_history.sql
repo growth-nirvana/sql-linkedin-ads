@@ -15,6 +15,11 @@ SET table_exists = (
   WHERE table_name = '{{source_table_id}}'
 );
 
+-- add missing columns to source
+
+ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
+ADD COLUMN IF NOT EXISTS total_budget STRING;
+
 -- Only proceed if the source table exists
 IF table_exists THEN
 
@@ -32,7 +37,7 @@ CREATE TABLE IF NOT EXISTS `{{target_dataset}}.{{target_table_id}}` (
   version STRING,
   associated_entity STRING,
   associated_entity_organization_id INT64,
-  run_schedule STRING,
+  run_schedule_start STRING,
   optimization_target_type STRING,
   change_audit_stamps STRING,
   campaign_group STRING,
@@ -82,7 +87,7 @@ SELECT
   version,
   associated_entity,
   associated_entity_organization_id,
-  run_schedule,
+  JSON_EXTRACT_SCALAR(run_schedule, '$.start') as run_schedule_start,
   optimization_target_type,
   change_audit_stamps,
   campaign_group,
@@ -168,7 +173,7 @@ BEGIN TRANSACTION;
       version,
       associated_entity,
       associated_entity_organization_id,
-      run_schedule,
+      run_schedule_start,
       optimization_target_type,
       change_audit_stamps,
       campaign_group,
@@ -207,7 +212,7 @@ BEGIN TRANSACTION;
       S.version,
       S.associated_entity,
       S.associated_entity_organization_id,
-      S.run_schedule,
+      S.run_schedule_start,
       S.optimization_target_type,
       S.change_audit_stamps,
       S.campaign_group,
