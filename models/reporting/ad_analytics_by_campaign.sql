@@ -117,7 +117,7 @@ ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
   -- Create target table if it doesn't exist
   CREATE TABLE IF NOT EXISTS `{{target_dataset}}.{{target_table_id}}` (
     campaign_id INT64 NOT NULL,
-    date DATE NOT NULL,
+    day DATE NOT NULL,
     _gn_id STRING,
     campaign STRING,
     document_completions INT64,
@@ -257,7 +257,7 @@ ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
     IF EXISTS (
       SELECT 1
       FROM `{{target_dataset}}.{{target_table_id}}`
-      WHERE date BETWEEN min_date AND max_date
+      WHERE day BETWEEN min_date AND max_date
         AND campaign_id IN (
           SELECT DISTINCT campaign_id FROM latest_batch
         )
@@ -272,7 +272,7 @@ ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
 
     INSERT INTO `{{target_dataset}}.{{target_table_id}}` (
       campaign_id,
-      date,
+      day,
       _gn_id,
       campaign,
       document_completions,
@@ -365,7 +365,7 @@ ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
     )
     SELECT
       campaign_id,
-      DATE(start_at) AS date,
+      DATE(start_at) AS day,
       TO_HEX(MD5(TO_JSON_STRING([
         CAST(campaign_id AS STRING),
         CAST(DATE(start_at) AS STRING)
