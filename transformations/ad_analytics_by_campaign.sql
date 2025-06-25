@@ -264,7 +264,7 @@ ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
       LIMIT 1
     ) THEN
       DELETE FROM `{{target_dataset}}.{{target_table_id}}`
-      WHERE date BETWEEN min_date AND max_date
+      WHERE day BETWEEN min_date AND max_date
         AND campaign_id IN (
           SELECT DISTINCT campaign_id FROM latest_batch
         );
