@@ -209,38 +209,42 @@ ALTER TABLE `{{source_dataset}}.{{source_table_id}}`
     _fivetran_synced TIMESTAMP
   );
 
-  -- Step 1: Create temp table for latest batch
-  CREATE TEMP TABLE latest_batch AS
-  WITH base AS (
+    -- Step 1: Create temp table for latest batch
+    CREATE TEMP TABLE latest_batch AS
+    WITH base AS (
     SELECT * FROM `{{source_dataset}}.{{source_table_id}}`
-  ),
-  ordered AS (
+    ),
+    ordered AS (
     SELECT *,
-      TIMESTAMP_DIFF(
+        TIMESTAMP_DIFF(
         _time_extracted,
         LAG(_time_extracted) OVER (ORDER BY _time_extracted),
         SECOND
-      ) AS diff_seconds
+        ) AS diff_seconds
     FROM base
-  ),
-  batches AS (
+    ),
+    batches AS (
     SELECT *,
-      SUM(CASE WHEN diff_seconds IS NULL OR diff_seconds > {{batch_threshold_seconds}} THEN 1 ELSE 0 END)
+        SUM(CASE WHEN diff_seconds IS NULL OR diff_seconds > {{batch_threshold_seconds}} THEN 1 ELSE 0 END)
         OVER (ORDER BY _time_extracted) AS batch_id
     FROM ordered
-  ),
-  ranked_batches AS (
+    ),
+    ranked_batches AS (
     SELECT *,
-      RANK() OVER (ORDER BY batch_id DESC) AS batch_rank
+        RANK() OVER (ORDER BY batch_id DESC) AS batch_rank
     FROM batches
-  ),
-  latest AS (
+    ),
+    latest AS (
     SELECT *,
-      MAX(UNIX_SECONDS(_time_extracted)) OVER (PARTITION BY batch_id) as run_id
+        MAX(UNIX_SECONDS(_time_extracted)) OVER (PARTITION BY batch_id) as run_id,
+        ROW_NUMBER() OVER (
+        PARTITION BY campaign_id, start_at
+        ORDER BY _time_extracted DESC
+        ) AS row_num
     FROM ranked_batches
     WHERE batch_rank = 1
-  )
-  SELECT * FROM latest;
+    )
+    SELECT * FROM latest WHERE row_num = 1;
 
   -- Step 2: Assign min/max dates using SET + scalar subqueries
   SET min_date = (
