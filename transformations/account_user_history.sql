@@ -36,73 +36,24 @@ CREATE TABLE IF NOT EXISTS `{{target_dataset}}.{{target_table_id}}` (
   _gn_id STRING
 );
 
--- Step 1: Create temp table for latest batch with deduplication
-CREATE TEMP TABLE latest_batch AS
-WITH base AS (
-  SELECT *,
-    ROW_NUMBER() OVER (
-      PARTITION BY account_id, user_person_id 
-      ORDER BY _time_extracted DESC
-    ) as rn
-  FROM `{{source_dataset}}.{{source_table_id}}`
-)
-SELECT 
-  CURRENT_TIMESTAMP() AS _gn_start,
-  account_id,
-  user_person_id,
-  TRUE AS _gn_active,
-  CAST(NULL AS TIMESTAMP) AS _gn_end,
-  CURRENT_TIMESTAMP() AS _gn_synced,
-  account,
-  change_audit_stamps,
-  role,
-  user,
-  created_time,
-  last_modified_time,
-  tenant,
-  TO_HEX(SHA256(CONCAT(
-    COALESCE(CAST(account_id AS STRING), ''),
-    COALESCE(user_person_id, ''),
-    COALESCE(account, ''),
-    COALESCE(change_audit_stamps, ''),
-    COALESCE(role, ''),
-    COALESCE(user, ''),
-    COALESCE(CAST(created_time AS STRING), ''),
-    COALESCE(CAST(last_modified_time AS STRING), ''),
-    COALESCE(tenant, '')
-  ))) AS _gn_id
-FROM base
-WHERE rn = 1;
-
--- Step 2: Handle SCD Type 2 changes
+-- Simple merge on account_id and user_person_id
 BEGIN TRANSACTION;
 
-  -- Close existing active records that have changed
-  UPDATE `{{target_dataset}}.{{target_table_id}}` target
-  SET 
-    _gn_active = FALSE,
-    _gn_end = CURRENT_TIMESTAMP()
-  WHERE target._gn_active = TRUE
-    AND target.account_id IN (SELECT account_id FROM latest_batch)
-    AND target.user_person_id IN (SELECT user_person_id FROM latest_batch)
-    AND EXISTS (
-      SELECT 1
-      FROM latest_batch source
-      WHERE source.account_id = target.account_id
-        AND source.user_person_id = target.user_person_id
-        AND source._gn_id != target._gn_id
-    );
-
-  -- Insert new records
   MERGE `{{target_dataset}}.{{target_table_id}}` T
-  USING latest_batch S
+  USING `{{source_dataset}}.{{source_table_id}}` S
   ON T.account_id = S.account_id
     AND T.user_person_id = S.user_person_id
     AND T._gn_active = TRUE
-  WHEN MATCHED AND T._gn_id != S._gn_id THEN
+  WHEN MATCHED THEN
     UPDATE SET
-      _gn_active = FALSE,
-      _gn_end = CURRENT_TIMESTAMP()
+      _gn_synced = CURRENT_TIMESTAMP(),
+      account = CAST(S.account AS STRING),
+      change_audit_stamps = CAST(S.change_audit_stamps AS STRING),
+      role = CAST(S.role AS STRING),
+      user = CAST(S.user AS STRING),
+      created_time = CAST(S.created_time AS TIMESTAMP),
+      last_modified_time = CAST(S.last_modified_time AS TIMESTAMP),
+      tenant = CAST(S.tenant AS STRING)
   WHEN NOT MATCHED THEN
     INSERT (
       _gn_start,
@@ -121,25 +72,22 @@ BEGIN TRANSACTION;
       _gn_id
     )
     VALUES (
-      S._gn_start,
-      S.account_id,
-      S.user_person_id,
-      S._gn_active,
-      S._gn_end,
-      S._gn_synced,
-      S.account,
-      S.change_audit_stamps,
-      S.role,
-      S.user,
-      S.created_time,
-      S.last_modified_time,
-      S.tenant,
-      S._gn_id
+      CURRENT_TIMESTAMP(),
+      CAST(S.account_id AS INT64),
+      CAST(S.user_person_id AS STRING),
+      TRUE,
+      CAST(NULL AS TIMESTAMP),
+      CURRENT_TIMESTAMP(),
+      CAST(S.account AS STRING),
+      CAST(S.change_audit_stamps AS STRING),
+      CAST(S.role AS STRING),
+      CAST(S.user AS STRING),
+      CAST(S.created_time AS TIMESTAMP),
+      CAST(S.last_modified_time AS TIMESTAMP),
+      CAST(S.tenant AS STRING),
+      CAST(NULL AS STRING)
     );
 
 COMMIT TRANSACTION;
-
--- Drop the source table after successful insertion
--- DROP TABLE IF EXISTS `{{source_dataset}}.{{source_table_id}}`;
 
 END IF; 

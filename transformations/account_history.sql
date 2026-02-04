@@ -46,75 +46,34 @@ CREATE TABLE IF NOT EXISTS `{{target_dataset}}.{{target_table_id}}` (
   _gn_id STRING
 );
 
--- Step 1: Create temp table for latest batch with deduplication
-CREATE TEMP TABLE latest_batch AS
-WITH base AS (
-  SELECT *,
-    ROW_NUMBER() OVER (
-      PARTITION BY id 
-      ORDER BY _time_extracted DESC
-    ) as rn
-  FROM `{{source_dataset}}.{{source_table_id}}`
-)
-SELECT 
-  CURRENT_TIMESTAMP() AS _gn_start,
-  id,
-  TRUE AS _gn_active,
-  CAST(NULL AS TIMESTAMP) AS _gn_end,
-  CURRENT_TIMESTAMP() AS _gn_synced,
-  change_audit_stamps,
-  currency,
-  name,
-  notified_on_campaign_optimization,
-  notified_on_creative_approval,
-  notified_on_creative_rejection,
-  notified_on_end_of_campaign,
-  notified_on_new_features_enabled,
-  reference,
-  reference_organization_id,
-  serving_statuses,
-  status,
-  type,
-  test,
-  version,
-  created_time,
-  last_modified_time,
-  tenant,
-  TO_HEX(SHA256(CONCAT(
-    COALESCE(CAST(id AS STRING), ''),
-    COALESCE(change_audit_stamps, ''),
-    COALESCE(currency, ''),
-    COALESCE(name, ''),
-    COALESCE(CAST(notified_on_campaign_optimization AS STRING), ''),
-    COALESCE(CAST(notified_on_creative_approval AS STRING), ''),
-    COALESCE(CAST(notified_on_creative_rejection AS STRING), ''),
-    COALESCE(CAST(notified_on_end_of_campaign AS STRING), ''),
-    COALESCE(CAST(notified_on_new_features_enabled AS STRING), ''),
-    COALESCE(reference, ''),
-    COALESCE(CAST(reference_organization_id AS STRING), ''),
-    COALESCE(serving_statuses, ''),
-    COALESCE(status, ''),
-    COALESCE(type, ''),
-    COALESCE(CAST(test AS STRING), ''),
-    COALESCE(version, ''),
-    COALESCE(CAST(created_time AS STRING), ''),
-    COALESCE(CAST(last_modified_time AS STRING), ''),
-    COALESCE(tenant, '')
-  ))) AS _gn_id
-FROM base
-WHERE rn = 1;
-
--- Step 2: Handle SCD Type 2 changes
+-- Simple merge on id
 BEGIN TRANSACTION;
 
   MERGE `{{target_dataset}}.{{target_table_id}}` T
-  USING latest_batch S
+  USING `{{source_dataset}}.{{source_table_id}}` S
   ON T.id = S.id
     AND T._gn_active = TRUE
-  WHEN MATCHED AND T._gn_id != S._gn_id THEN
+  WHEN MATCHED THEN
     UPDATE SET
-      _gn_active = FALSE,
-      _gn_end = CURRENT_TIMESTAMP()
+      _gn_synced = CURRENT_TIMESTAMP(),
+      change_audit_stamps = CAST(S.change_audit_stamps AS STRING),
+      currency = CAST(S.currency AS STRING),
+      name = CAST(S.name AS STRING),
+      notified_on_campaign_optimization = CAST(S.notified_on_campaign_optimization AS BOOL),
+      notified_on_creative_approval = CAST(S.notified_on_creative_approval AS BOOL),
+      notified_on_creative_rejection = CAST(S.notified_on_creative_rejection AS BOOL),
+      notified_on_end_of_campaign = CAST(S.notified_on_end_of_campaign AS BOOL),
+      notified_on_new_features_enabled = CAST(S.notified_on_new_features_enabled AS BOOL),
+      reference = CAST(S.reference AS STRING),
+      reference_organization_id = CAST(S.reference_organization_id AS INT64),
+      serving_statuses = CAST(S.serving_statuses AS STRING),
+      status = CAST(S.status AS STRING),
+      type = CAST(S.type AS STRING),
+      test = CAST(S.test AS BOOL),
+      version = CAST(S.version AS STRING),
+      created_time = CAST(S.created_time AS TIMESTAMP),
+      last_modified_time = CAST(S.last_modified_time AS TIMESTAMP),
+      tenant = CAST(S.tenant AS STRING)
   WHEN NOT MATCHED THEN
     INSERT (
       _gn_start,
@@ -143,35 +102,32 @@ BEGIN TRANSACTION;
       _gn_id
     )
     VALUES (
-      S._gn_start,
-      S.id,
-      S._gn_active,
-      S._gn_end,
-      S._gn_synced,
-      S.change_audit_stamps,
-      S.currency,
-      S.name,
-      S.notified_on_campaign_optimization,
-      S.notified_on_creative_approval,
-      S.notified_on_creative_rejection,
-      S.notified_on_end_of_campaign,
-      S.notified_on_new_features_enabled,
-      S.reference,
-      S.reference_organization_id,
-      S.serving_statuses,
-      S.status,
-      S.type,
-      S.test,
-      S.version,
-      S.created_time,
-      S.last_modified_time,
-      S.tenant,
-      S._gn_id
+      CURRENT_TIMESTAMP(),
+      CAST(S.id AS INT64),
+      TRUE,
+      CAST(NULL AS TIMESTAMP),
+      CURRENT_TIMESTAMP(),
+      CAST(S.change_audit_stamps AS STRING),
+      CAST(S.currency AS STRING),
+      CAST(S.name AS STRING),
+      CAST(S.notified_on_campaign_optimization AS BOOL),
+      CAST(S.notified_on_creative_approval AS BOOL),
+      CAST(S.notified_on_creative_rejection AS BOOL),
+      CAST(S.notified_on_end_of_campaign AS BOOL),
+      CAST(S.notified_on_new_features_enabled AS BOOL),
+      CAST(S.reference AS STRING),
+      CAST(S.reference_organization_id AS INT64),
+      CAST(S.serving_statuses AS STRING),
+      CAST(S.status AS STRING),
+      CAST(S.type AS STRING),
+      CAST(S.test AS BOOL),
+      CAST(S.version AS STRING),
+      CAST(S.created_time AS TIMESTAMP),
+      CAST(S.last_modified_time AS TIMESTAMP),
+      CAST(S.tenant AS STRING),
+      CAST(NULL AS STRING)
     );
 
 COMMIT TRANSACTION;
-
--- Drop the source table after successful insertion
-DROP TABLE IF EXISTS `{{source_dataset}}.{{source_table_id}}`;
 
 END IF; 

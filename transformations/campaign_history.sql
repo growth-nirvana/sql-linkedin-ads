@@ -64,101 +64,47 @@ CREATE TABLE IF NOT EXISTS `{{target_dataset}}.{{target_table_id}}` (
   _gn_id STRING
 );
 
--- Step 1: Create temp table for latest batch with deduplication
-CREATE TEMP TABLE latest_batch AS
-WITH base AS (
-  SELECT *,
-    ROW_NUMBER() OVER (
-      PARTITION BY id 
-      ORDER BY _time_extracted DESC
-    ) as rn
-  FROM `{{source_dataset}}.{{source_table_id}}`
-)
-SELECT 
-  CURRENT_TIMESTAMP() AS _gn_start,
-  id,
-  TRUE AS _gn_active,
-  CAST(NULL AS TIMESTAMP) AS _gn_end,
-  CURRENT_TIMESTAMP() AS _gn_synced,
-  targeting_criteria,
-  serving_statuses,
-  type,
-  locale,
-  version,
-  associated_entity,
-  associated_entity_organization_id,
-  JSON_EXTRACT_SCALAR(run_schedule, '$.start') as run_schedule_start,
-  optimization_target_type,
-  change_audit_stamps,
-  campaign_group,
-  campaign_group_id,
-  daily_budget,
-  unit_cost,
-  creative_selection,
-  cost_type,
-  name,
-  objective_type,
-  offsite_delivery_enabled,
-  offsite_preferences,
-  audience_expansion_enabled,
-  test,
-  format,
-  pacing_strategy,
-  account,
-  account_id,
-  status,
-  created_time,
-  last_modified_time,
-  tenant,
-  total_budget,
-  TO_HEX(SHA256(CONCAT(
-    COALESCE(CAST(id AS STRING), ''),
-    COALESCE(targeting_criteria, ''),
-    COALESCE(serving_statuses, ''),
-    COALESCE(type, ''),
-    COALESCE(locale, ''),
-    COALESCE(version, ''),
-    COALESCE(associated_entity, ''),
-    COALESCE(CAST(associated_entity_organization_id AS STRING), ''),
-    COALESCE(run_schedule, ''),
-    COALESCE(optimization_target_type, ''),
-    COALESCE(change_audit_stamps, ''),
-    COALESCE(campaign_group, ''),
-    COALESCE(CAST(campaign_group_id AS STRING), ''),
-    COALESCE(daily_budget, ''),
-    COALESCE(unit_cost, ''),
-    COALESCE(creative_selection, ''),
-    COALESCE(cost_type, ''),
-    COALESCE(name, ''),
-    COALESCE(objective_type, ''),
-    COALESCE(CAST(offsite_delivery_enabled AS STRING), ''),
-    COALESCE(offsite_preferences, ''),
-    COALESCE(CAST(audience_expansion_enabled AS STRING), ''),
-    COALESCE(CAST(test AS STRING), ''),
-    COALESCE(format, ''),
-    COALESCE(pacing_strategy, ''),
-    COALESCE(account, ''),
-    COALESCE(CAST(account_id AS STRING), ''),
-    COALESCE(status, ''),
-    COALESCE(CAST(created_time AS STRING), ''),
-    COALESCE(CAST(last_modified_time AS STRING), ''),
-    COALESCE(tenant, ''),
-    COALESCE(total_budget, '')
-  ))) AS _gn_id
-FROM base
-WHERE rn = 1;
-
--- Step 2: Handle SCD Type 2 changes
+-- Simple merge on id
 BEGIN TRANSACTION;
 
   MERGE `{{target_dataset}}.{{target_table_id}}` T
-  USING latest_batch S
+  USING `{{source_dataset}}.{{source_table_id}}` S
   ON T.id = S.id
     AND T._gn_active = TRUE
-  WHEN MATCHED AND T._gn_id != S._gn_id THEN
+  WHEN MATCHED THEN
     UPDATE SET
-      _gn_active = FALSE,
-      _gn_end = CURRENT_TIMESTAMP()
+      _gn_synced = CURRENT_TIMESTAMP(),
+      targeting_criteria = CAST(S.targeting_criteria AS STRING),
+      serving_statuses = CAST(S.serving_statuses AS STRING),
+      type = CAST(S.type AS STRING),
+      locale = CAST(S.locale AS STRING),
+      version = CAST(S.version AS STRING),
+      associated_entity = CAST(S.associated_entity AS STRING),
+      associated_entity_organization_id = CAST(S.associated_entity_organization_id AS INT64),
+      run_schedule_start = CAST(JSON_EXTRACT_SCALAR(S.run_schedule, '$.start') AS STRING),
+      optimization_target_type = CAST(S.optimization_target_type AS STRING),
+      change_audit_stamps = CAST(S.change_audit_stamps AS STRING),
+      campaign_group = CAST(S.campaign_group AS STRING),
+      campaign_group_id = CAST(S.campaign_group_id AS INT64),
+      daily_budget = CAST(S.daily_budget AS STRING),
+      unit_cost = CAST(S.unit_cost AS STRING),
+      creative_selection = CAST(S.creative_selection AS STRING),
+      cost_type = CAST(S.cost_type AS STRING),
+      name = CAST(S.name AS STRING),
+      objective_type = CAST(S.objective_type AS STRING),
+      offsite_delivery_enabled = CAST(S.offsite_delivery_enabled AS BOOL),
+      offsite_preferences = CAST(S.offsite_preferences AS STRING),
+      audience_expansion_enabled = CAST(S.audience_expansion_enabled AS BOOL),
+      test = CAST(S.test AS BOOL),
+      format = CAST(S.format AS STRING),
+      pacing_strategy = CAST(S.pacing_strategy AS STRING),
+      account = CAST(S.account AS STRING),
+      account_id = CAST(S.account_id AS INT64),
+      status = CAST(S.status AS STRING),
+      created_time = CAST(S.created_time AS TIMESTAMP),
+      last_modified_time = CAST(S.last_modified_time AS TIMESTAMP),
+      tenant = CAST(S.tenant AS STRING),
+      total_budget = CAST(S.total_budget AS STRING)
   WHEN NOT MATCHED THEN
     INSERT (
       _gn_start,
@@ -200,48 +146,45 @@ BEGIN TRANSACTION;
       _gn_id
     )
     VALUES (
-      S._gn_start,
-      S.id,
-      S._gn_active,
-      S._gn_end,
-      S._gn_synced,
-      S.targeting_criteria,
-      S.serving_statuses,
-      S.type,
-      S.locale,
-      S.version,
-      S.associated_entity,
-      S.associated_entity_organization_id,
-      S.run_schedule_start,
-      S.optimization_target_type,
-      S.change_audit_stamps,
-      S.campaign_group,
-      S.campaign_group_id,
-      S.daily_budget,
-      S.unit_cost,
-      S.creative_selection,
-      S.cost_type,
-      S.name,
-      S.objective_type,
-      S.offsite_delivery_enabled,
-      S.offsite_preferences,
-      S.audience_expansion_enabled,
-      S.test,
-      S.format,
-      S.pacing_strategy,
-      S.account,
-      S.account_id,
-      S.status,
-      S.created_time,
-      S.last_modified_time,
-      S.tenant,
-      S.total_budget,
-      S._gn_id
+      CURRENT_TIMESTAMP(),
+      CAST(S.id AS INT64),
+      TRUE,
+      CAST(NULL AS TIMESTAMP),
+      CURRENT_TIMESTAMP(),
+      CAST(S.targeting_criteria AS STRING),
+      CAST(S.serving_statuses AS STRING),
+      CAST(S.type AS STRING),
+      CAST(S.locale AS STRING),
+      CAST(S.version AS STRING),
+      CAST(S.associated_entity AS STRING),
+      CAST(S.associated_entity_organization_id AS INT64),
+      CAST(JSON_EXTRACT_SCALAR(S.run_schedule, '$.start') AS STRING),
+      CAST(S.optimization_target_type AS STRING),
+      CAST(S.change_audit_stamps AS STRING),
+      CAST(S.campaign_group AS STRING),
+      CAST(S.campaign_group_id AS INT64),
+      CAST(S.daily_budget AS STRING),
+      CAST(S.unit_cost AS STRING),
+      CAST(S.creative_selection AS STRING),
+      CAST(S.cost_type AS STRING),
+      CAST(S.name AS STRING),
+      CAST(S.objective_type AS STRING),
+      CAST(S.offsite_delivery_enabled AS BOOL),
+      CAST(S.offsite_preferences AS STRING),
+      CAST(S.audience_expansion_enabled AS BOOL),
+      CAST(S.test AS BOOL),
+      CAST(S.format AS STRING),
+      CAST(S.pacing_strategy AS STRING),
+      CAST(S.account AS STRING),
+      CAST(S.account_id AS INT64),
+      CAST(S.status AS STRING),
+      CAST(S.created_time AS TIMESTAMP),
+      CAST(S.last_modified_time AS TIMESTAMP),
+      CAST(S.tenant AS STRING),
+      CAST(S.total_budget AS STRING),
+      CAST(NULL AS STRING)
     );
 
 COMMIT TRANSACTION;
-
--- Drop the source table after successful insertion
--- DROP TABLE IF EXISTS `{{source_dataset}}.{{source_table_id}}`;
 
 END IF; 
